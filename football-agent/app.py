@@ -196,14 +196,44 @@ def api_matches():
     return jsonify({"matches": matches, "error": error})
 
 
-@app.route("/api/tweets")
-def api_tweets():
-    articles = fetch_football_news()
-    matches, _ = fetch_todays_matches()
-    tweets, error = generate_tweet_ideas(articles, matches)
-    if error:
-        return jsonify({"error": error, "tweets": []}), 500
-    return jsonify({"tweets": tweets})
+@app.route('/api/tweets')
+def generate_tweets():
+    news = get_football_news()
+
+    tweets = []
+
+    templates = [
+        "Soyons honnêtes : {topic} est-il vraiment au niveau attendu cette saison ?",
+        "Question sérieuse : est-ce que {topic} est surcoté actuellement ?",
+        "Débat du jour : {topic} ou un autre joueur à ce poste ?",
+        "Si votre club pouvait signer {topic} demain, vous prenez ?",
+        "On en parle assez de {topic} cette saison ou pas ?",
+        "Opinion impopulaire : {topic} n'est peut-être pas aussi fort que tout le monde le dit.",
+        "Soyons honnêtes : {topic} est-il top 5 mondial à son poste ?",
+        "Votre avis : {topic} ballon d'or un jour ou impossible ?"
+    ]
+
+    import random
+
+    topics = []
+
+    for article in news[:10]:
+        title = article.get("title", "")
+        words = title.split()
+        if len(words) > 2:
+            topics.append(words[0] + " " + words[1])
+
+    if not topics:
+        topics = ["Mbappé", "Haaland", "Real Madrid", "PSG", "Premier League"]
+
+    for i in range(8):
+        topic = random.choice(topics)
+        template = random.choice(templates)
+        tweets.append(template.format(topic=topic))
+
+    return jsonify({
+        "tweets": tweets
+    })
 
 
 if __name__ == "__main__":
