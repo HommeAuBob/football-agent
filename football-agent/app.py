@@ -14,7 +14,6 @@ app = Flask(__name__)
 
 FOOTBALL_DATA_API_KEY = os.getenv("FOOTBALL_DATA_API_KEY")
 
-# ─── RSS FEEDS ────────────────────────────────────────────────────────────────
 RSS_FEEDS = [
     "https://www.lequipe.fr/rss/actu_rss.xml",
     "https://rmcsport.bfmtv.com/rss/football/",
@@ -22,59 +21,80 @@ RSS_FEEDS = [
     "https://www.goal.com/feeds/fr/news",
 ]
 
+# Entités foot qu'on veut reconnaître en priorité
+KNOWN_ENTITIES = [
+    "Mbappé", "Haaland", "Bellingham", "Vinicius", "Rodrygo", "Messi", "Cristiano Ronaldo",
+    "Neymar", "Salah", "Kane", "Lewandowski", "Yamal", "Pedri", "Musiala", "Griezmann",
+    "Dembélé", "Kvaratskhelia", "Saka", "Foden", "De Bruyne",
+    "PSG", "Paris", "Real Madrid", "Barça", "Barcelona", "Manchester City", "City",
+    "Liverpool", "Arsenal", "Chelsea", "Manchester United", "Bayern", "Dortmund",
+    "Juventus", "Milan", "Inter", "Napoli", "Lille", "Marseille", "OM", "Lyon",
+    "Monaco", "Lens", "Aston Villa",
+    "Ligue des champions", "Champions League", "Ligue Europa", "Europa League",
+    "Premier League", "Liga", "Serie A", "Bundesliga", "Ligue 1",
+    "Ballon d'Or", "mercato"
+]
+
+STOPWORDS = {
+    "direct", "live", "suivez", "regardez", "une", "un", "des", "les", "la", "le",
+    "du", "de", "d", "au", "aux", "pour", "dans", "après", "apres", "vers", "avec",
+    "sur", "son", "sa", "ses", "qui", "est", "pas", "plus", "moins", "important",
+    "importante", "retour", "normalité", "normalite", "actualité", "actualites",
+    "football", "foot", "home", "news", "match", "aller", "soir", "jour"
+}
+
+
+def clean_text(text):
+    text = re.sub(r"<[^>]+>", "", text)
+    text = text.replace("\xa0", " ").strip()
+    return text
+
 
 def fetch_football_news(max_items=15):
-    """Récupère les news foot depuis les flux RSS."""
     articles = []
 
     for url in RSS_FEEDS:
         try:
             feed = feedparser.parse(url)
 
-            for entry in feed.entries[:5]:
-                title = entry.get("title", "").strip()
-                summary = entry.get("summary", entry.get("description", "")).strip()
-                summary = re.sub(r"<[^>]+>", "", summary)[:300]
+            for entry in feed.entries[:6]:
+                title = clean_text(entry.get("title", ""))
+                summary = clean_text(entry.get("summary", entry.get("description", "")))[:300]
                 link = entry.get("link", "")
                 published = entry.get("published", "")
 
                 if title:
-                    articles.append(
-                        {
-                            "title": title,
-                            "summary": summary,
-                            "link": link,
-                            "published": published,
-                            "source": feed.feed.get("title", url),
-                        }
-                    )
+                    articles.append({
+                        "title": title,
+                        "summary": summary,
+                        "link": link,
+                        "published": published,
+                        "source": feed.feed.get("title", url)
+                    })
         except Exception as e:
             print(f"Erreur RSS {url}: {e}")
-            continue
 
-    # Dédoublonner par titre
     seen = set()
     unique = []
 
     for article in articles:
-        key = article["title"][:80].lower()
+        key = article["title"][:90].lower()
         if key not in seen:
             seen.add(key)
             unique.append(article)
 
-    # Petit filtre anti vieux sujets aberrants / trop datés
-    old_keywords = [
+    # petit filtrage d'articles hors sujet / vieux délires remontés
+    blocked = [
         "messi au psg",
         "signature de messi au psg",
         "présentation de messi au psg",
         "lionel messi au psg",
-        "messi paris saint germain",
     ]
 
     filtered = []
     for article in unique:
         title_l = article["title"].lower()
-        if any(keyword in title_l for keyword in old_keywords):
+        if any(b in title_l for b in blocked):
             continue
         filtered.append(article)
 
@@ -82,7 +102,6 @@ def fetch_football_news(max_items=15):
 
 
 def fetch_todays_matches():
-    """Récupère les matchs du jour via football-data.org."""
     if not FOOTBALL_DATA_API_KEY:
         return [], "Clé API football-data.org manquante dans .env"
 
@@ -112,16 +131,14 @@ def fetch_todays_matches():
             else:
                 score_str = utc_time
 
-            matches.append(
-                {
-                    "home": home,
-                    "away": away,
-                    "competition": competition,
-                    "status": status,
-                    "score": score_str,
-                    "time": utc_time,
-                }
-            )
+            matches.append({
+                "home": home,
+                "away": away,
+                "competition": competition,
+                "status": status,
+                "score": score_str,
+                "time": utc_time
+            })
 
         return matches, None
 
@@ -131,126 +148,169 @@ def fetch_todays_matches():
         return [], f"Impossible de récupérer les matchs: {e}"
 
 
-def generate_tweet_ideas(articles, matches):
-    """Génère des idées de tweets sans IA payante."""
+def extract_topics_from_articles(articles, matches):
     topics = []
 
-    for article in articles[:12]:
-        title = article.get("title", "").strip()
-        if not title:
-            continue
+    for article in articles:
+        title = article.get("title", "")
 
-        cleaned = re.sub(r"[\"'«»:;!?()\-]+", " ", title)
-        words = [word for word in cleaned.split() if len(word) > 2]
+        # 1. priorité aux entités connues
+        found_entities = []
+        for entity in KNOWN_ENTITIES:
+            if entity.lower() in title.lower():
+                found_entities.append(entity)
 
-        if len(words) >= 2:
-            topics.append(" ".join(words[:2]))
-        elif words:
-            topics.append(words[0])
+        for entity in found_entities:
+            if entity not in topics:
+                topics.append(entity)
 
-    for match in matches[:6]:
-        topics.append(f"{match['home']} vs {match['away']}")
-        topics.append(match["competition"])
+        # 2. détecter des affiches du style PSG-Chelsea
+        duel_match = re.findall(r"\b([A-Z][A-Za-zÀ-ÿ]+)\s*[-–]\s*([A-Z][A-Za-zÀ-ÿ]+)\b", title)
+        for home, away in duel_match:
+            duel = f"{home} vs {away}"
+            if duel not in topics:
+                topics.append(duel)
 
-    blacklist = {
-        "home football",
-        "actualités foot",
-        "actualites foot",
-        "football actualités",
-        "football actualites",
-        "news foot",
-        "football agent",
-    }
+        # 3. fallback : mots propres plus propres
+        words = re.findall(r"\b[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'-]+\b", title)
+        candidates = []
+        for w in words:
+            wl = w.lower()
+            if len(w) < 4:
+                continue
+            if wl in STOPWORDS:
+                continue
+            if w.isupper() or w[0].isupper():
+                candidates.append(w)
+
+        if len(candidates) >= 2:
+            candidate_topic = f"{candidates[0]} {candidates[1]}"
+            if candidate_topic not in topics:
+                topics.append(candidate_topic)
+
+    for match in matches[:10]:
+        duel = f"{match['home']} vs {match['away']}"
+        if duel not in topics:
+            topics.append(duel)
+
+        if match["competition"] not in topics:
+            topics.append(match["competition"])
 
     clean_topics = []
-    for topic in topics:
-        if topic.lower() not in blacklist and len(topic.strip()) > 2:
-            clean_topics.append(topic.strip())
+    seen = set()
 
-    topics = clean_topics
+    for topic in topics:
+        topic = topic.strip()
+        topic_l = topic.lower()
+
+        if len(topic) < 3:
+            continue
+        if topic_l in seen:
+            continue
+        if topic_l in STOPWORDS:
+            continue
+        if topic_l.startswith("une "):
+            continue
+        if topic_l.startswith("direct "):
+            continue
+        if topic_l.startswith("suivez "):
+            continue
+
+        seen.add(topic_l)
+        clean_topics.append(topic)
+
+    return clean_topics[:20]
+
+
+def generate_tweet_ideas(articles, matches):
+    topics = extract_topics_from_articles(articles, matches)
 
     if not topics:
-        topics = ["Mbappé", "Haaland", "Real Madrid", "PSG", "Premier League"]
+        topics = [
+            "Mbappé",
+            "Haaland",
+            "Real Madrid",
+            "PSG",
+            "Arsenal",
+            "Premier League",
+            "Ligue des champions"
+        ]
 
     templates = [
-        (
-            "comparaison",
-            8,
-            "Débat éternel entre fans",
-            "Soyons honnêtes : {topic} aujourd’hui, c’est vraiment du très haut niveau ou on exagère ?",
-        ),
-        (
-            "polémique",
-            9,
-            "Sujet qui pousse à répondre",
-            "Question sérieuse : on surcote totalement {topic} ou pas du tout ?",
-        ),
-        (
-            "match",
-            8,
-            "Bon angle avant ou après match",
-            "{topic} ce soir : vrai test de niveau ou simple match piège selon vous ?",
-        ),
-        (
-            "transfert",
-            7,
-            "Très bon pour les fans de clubs",
-            "Si votre club pouvait récupérer {topic} demain, vous signez direct ou jamais ?",
-        ),
-        (
-            "comparaison",
-            8,
-            "Les comparaisons font commenter",
-            "{topic} ou un top joueur de son poste : vous choisissez qui honnêtement ?",
-        ),
-        (
-            "polémique",
-            9,
-            "Prend à contre-pied l’avis dominant",
-            "Opinion impopulaire : {topic} reçoit beaucoup trop de hype en ce moment.",
-        ),
-        (
-            "match",
-            7,
-            "Facile à poster dans l’instant",
-            "On en parle ou pas : {topic} peut faire exploser les débats ce soir.",
-        ),
-        (
-            "tactique",
-            6,
-            "Plus niche mais intéressant",
-            "{topic} : vrai problème de niveau ou juste mauvais contexte collectif ?",
-        ),
+        {
+            "category": "polémique",
+            "engagement_score": 9,
+            "reason": "fait réagir les fans immédiatement",
+            "text": "Soyons honnêtes : {topic} est surcoté en ce moment ou les critiques sont injustes ?"
+        },
+        {
+            "category": "comparaison",
+            "engagement_score": 8,
+            "reason": "les comparaisons créent toujours du débat",
+            "text": "{topic} aujourd’hui, vous le mettez vraiment parmi les meilleurs à son poste ou pas encore ?"
+        },
+        {
+            "category": "match",
+            "engagement_score": 8,
+            "reason": "idéal avant un gros match",
+            "text": "{topic} : vrai test ce soir ou simple match qu’une grande équipe doit gagner sans discussion ?"
+        },
+        {
+            "category": "transfert",
+            "engagement_score": 8,
+            "reason": "les fans projettent leur club",
+            "text": "Si votre club peut signer {topic} demain matin, vous dites oui direct ou vous passez votre tour ?"
+        },
+        {
+            "category": "polémique",
+            "engagement_score": 9,
+            "reason": "opinion tranchée = réponses",
+            "text": "Opinion impopulaire : autour de {topic}, il y a beaucoup plus de hype que de vrai niveau. D’accord ou non ?"
+        },
+        {
+            "category": "comparaison",
+            "engagement_score": 8,
+            "reason": "bon format pour les réponses courtes",
+            "text": "Question simple : {topic} ou un top joueur de son poste aujourd’hui, vous choisissez qui ?"
+        },
+        {
+            "category": "tactique",
+            "engagement_score": 7,
+            "reason": "bon débat pour connaisseurs",
+            "text": "{topic} : vrai problème de niveau, de système, ou juste contexte compliqué selon vous ?"
+        },
+        {
+            "category": "match",
+            "engagement_score": 8,
+            "reason": "fonctionne bien pendant l’actu chaude",
+            "text": "On va être honnêtes : {topic} peut faire exploser les débats ce soir ou on en fait trop ?"
+        }
     ]
 
     tweets = []
-    used_texts = set()
-    max_attempts = 50
+    used = set()
     attempts = 0
 
-    while len(tweets) < 8 and attempts < max_attempts:
+    while len(tweets) < 8 and attempts < 80:
         attempts += 1
         topic = random.choice(topics)
-        category, score, reason, template = random.choice(templates)
-        text = template.format(topic=topic)
+        template = random.choice(templates)
 
-        if text in used_texts:
+        text = template["text"].format(topic=topic)
+
+        if text in used:
             continue
 
-        used_texts.add(text)
-        tweets.append(
-            {
-                "text": text,
-                "category": category,
-                "engagement_score": score,
-                "reason": reason,
-            }
-        )
+        used.add(text)
+        tweets.append({
+            "text": text,
+            "category": template["category"],
+            "engagement_score": template["engagement_score"],
+            "reason": template["reason"]
+        })
 
     return tweets, None
 
-
-# ─── ROUTES ──────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
@@ -279,11 +339,6 @@ def api_tweets():
         return jsonify({"error": error, "tweets": []}), 500
 
     return jsonify({"tweets": tweets})
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":
