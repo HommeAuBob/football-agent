@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⚽ Football Agent IA</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <div class="grain"></div>
+
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">⚽</span>
+        <div>
+          <h1>FOOTBALL AGENT</h1>
+          <p class="tagline">Propulsé par IA — Pour ton compte X</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-refresh" class="btn btn-primary" onclick="loadAll()">
+          <span class="btn-icon">↻</span> Actualiser l'actu
+        </button>
+        <button id="btn-tweets" class="btn btn-accent" onclick="loadTweets()">
+          <span class="btn-icon">✦</span> Proposer des tweets
+        </button>
+      </div>
+    </div>
+    <div id="last-update" class="last-update"></div>
+  </header>
+
+  <main>
+
+    <!-- MATCHS DU JOUR -->
+    <section class="section" id="section-matches">
+      <div class="section-header">
+        <h2><span class="section-icon">📅</span> Matchs du jour</h2>
+        <div id="matches-status" class="status-badge"></div>
+      </div>
+      <div id="matches-container" class="matches-grid">
+        <div class="placeholder">Clique sur "Actualiser l'actu" pour charger les matchs</div>
+      </div>
+    </section>
+
+    <!-- NEWS FOOT -->
+    <section class="section" id="section-news">
+      <div class="section-header">
+        <h2><span class="section-icon">📰</span> Actualités foot</h2>
+        <span id="news-count" class="count-badge"></span>
+      </div>
+      <div id="news-container" class="news-list">
+        <div class="placeholder">Clique sur "Actualiser l'actu" pour charger les news</div>
+      </div>
+    </section>
+
+    <!-- IDÉES DE TWEETS -->
+    <section class="section" id="section-tweets">
+      <div class="section-header">
+        <h2><span class="section-icon">✦</span> Idées de tweets</h2>
+        <span id="tweets-count" class="count-badge"></span>
+      </div>
+      <div id="tweets-container" class="tweets-list">
+        <div class="placeholder">Clique sur "Proposer des tweets" pour générer des idées</div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>Football Agent IA — V1 — Données : L'Équipe RSS · RMC Sport RSS · football-data.org · Claude AI</p>
+  </footer>
+
+  <div id="loader" class="loader-overlay hidden">
+    <div class="loader-box">
+      <div class="spinner"></div>
+      <p id="loader-text">Chargement…</p>
+    </div>
+  </div>
+
+  <script src="/static/js/script.js"></script>
+</body>
+</html>
